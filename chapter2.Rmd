@@ -1,4 +1,4 @@
-# Insert chapter 2 title here
+# 2: Regression and model validation
 
 *Describe the work you have done this week and summarize your learning.*
 
@@ -10,4 +10,131 @@
 date()
 ```
 
-Here we go again...
+### Prep packages:
+
+```{r}
+
+library(GGally)
+library(ggplot2)
+library(dplyr)
+library(tidyverse)
+
+```
+
+
+### Read in data:
+
+```{r}
+
+data <- read.table("https://raw.githubusercontent.com/KimmoVehkalahti/Helsinki-Open-Data-Science/master/datasets/learning2014.txt", sep = ",", header = T)
+
+```
+
+### Explore the data:
+
+```{r}
+
+dim(data)
+head(data)
+str(data)
+
+
+```
+
+The data has 166 rows and 7 columns and has the columns gender  , age, attitude, deep, stra, surf, and points. 
+
+See <https://www.mv.helsinki.fi/home/kvehkala/JYTmooc/JYTOPKYS3-meta.txt> for the original description of the data and the script create_learning2014.R for how the data was wrangled.  
+
+### Graphical overview of the data:
+
+```{r}
+
+pairs(data[-1]) # exclude the nonnumeric column gender
+
+# include the class variable as a factor
+data_factors <- data
+data_factors$gender <- as.factor(data_factors$gender)
+pairs(data_factors)
+
+ggpairs(data_factors, mapping = aes(alpha = 0.3), lower = list(combo = wrap("facethist", bins = 20)))
+
+```
+
+Some variables correlated more, some less. FOr example older study subjects have higher points, and attitude and points are linearly correlated. 
+
+
+### Summaries of the variables in the data:
+
+```{r}
+
+summary(data)
+
+```
+All variables apart from gender and age have been scaled to be from 0 to 5. 
+
+### Linear regression:
+
+```{r}
+
+# fit a linear model
+my_model <- lm(points ~ attitude + stra + surf, data = data) 
+# the three variables with the highest correlation to points in the plots above
+
+# print out a summary of the model
+summary(my_model)
+
+```
+
+The variables stra and surf do not have a statistially significant association to the end variable points, so we are removing them from the model:
+
+```{r}
+
+# fit a linear model
+my_model <- lm(points ~ attitude, data = data) 
+
+# print out a summary of the model
+summary(my_model)
+
+
+```
+
+If all other variables stay at a fixed value, the variable attitude increases points by 3.53 when it (attitude) increases by one unit. In the previous model above, stra has a slight increase for points when other variables are fixed, whereas surf decreases points. 
+
+The estimate or beta is the slope of the linear regression line, and the intercept is where the line hits the y-axis. 
+
+The statistical test related to the model parameters checks if the slope of the line being equal to zero. In the first model the p-values for stra and surf were > 0.05, so their slopes are likely zero, whereas attitude's is likely different from zero. 
+
+The Adjusted R squared tells us about the proportion of the dependent variable which is explained by the explanatory variables. It is between 0 and 1, bigger being better for the model fit for then the model fits the data perfectly. We can see that our model is not the best for having a low R squared. 
+
+
+### Diagnostic plots: Residuals vs Fitted values, Normal QQ-plot and Residuals vs Leverage
+
+```{r}
+
+par(mfrow = c(2,2))
+plot(my_model, which = c(1,2,5))
+
+
+```
+
+The assumptions of the model are:
+
+1. Linear relationship between predictors and outcome;
+  
+    * From the first pairwise plots we drew in the beginning we can tell that the linear relationship assumpition is met. 
+    * this is also visible in the "residuals vs fitted values" plot where no curvature is seen
+
+2. Independence of residuals;
+
+    * the residuals do not show a pattern in the first plot, so thy seem to be independent. see <https://www.originlab.com/doc/origin-help/residual-plot-analysis> for examples of dependent residuals
+
+3. Normal distribution of residuals;
+
+    * in the qq plot the values roughly follow the straight line, being roughly normally distributed. The ends are a bit off and there are outliers on the left tail, which should be adressed to be sure that the distribution is actually normal. In the leverage plot we see outliers too, so this should likely be adressed.  
+
+4. Equal variance of residuals.
+
+    * in the plot "residuals vs fitted values" we can see that there is no one area where the residuals would be much smaller or larger than elsewhere, so they are equal
+
+
+
