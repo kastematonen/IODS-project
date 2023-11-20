@@ -1,0 +1,174 @@
+# 2: Logistic regression
+
+```{r}
+date()
+```
+
+### Prep packages:
+
+```{r, message=F, warning=F}
+
+library(GGally)
+library(ggplot2)
+library(dplyr)
+library(tidyverse)
+library(boot)
+
+```
+
+
+### Read in data:
+
+The data is from <https://www.archive.ics.uci.edu/dataset/320/student+performance>
+
+```{r}
+
+data <- read.table("https://raw.githubusercontent.com/KimmoVehkalahti/Helsinki-Open-Data-Science/master/datasets/alc.csv", sep = ",", header = T)
+colnames(data)
+
+```
+
+We want to study the relationships between high/low alcohol consumption and some of the other variables in the data. 
+
+Choosing 4 interesting variables in the data and coming up with hypotheses for them:
+
+  * "sex": I think male students might have a higher alcohol cnsumption
+  
+  * "failures ": more failed classas might result in a higher alcohol consumption
+  
+  * "goout": more going out with friends might result in a higher alcohol consumption
+
+
+Numerically and graphically exploring the distributions of your chosen variables and their relationships with alcohol consumption:
+
+```{r}
+
+# for sex:
+data %>% group_by(sex, high_use) %>% summarise(count = n())
+# in females, 41/(41+154) = 0.2102564 have high use
+# in males, 70/(70+105) = 0.4 have high use
+
+g1 <- ggplot(data, aes(x = high_use, y = sex)) + geom_boxplot() + ylab("sex")
+g1 # not a great way to plot this
+g2 <- ggplot(data = data, aes(x = high_use)) + geom_bar() + facet_wrap("sex")
+g2 # this is better
+
+#-------------------------------------------------------------------------------------------------
+# for failures:
+data %>% group_by(high_use) %>% summarise(count = n(), mean_failure = mean(failures))
+# more failue in the group with high use
+
+g1 <- ggplot(data, aes(x = high_use, y = failures)) + geom_boxplot() + ylab("failures")
+g1 # not a great way to plot this
+g2 <- ggplot(data = data, aes(x = high_use)) + geom_bar() + facet_wrap("failures")
+g2 # this is better
+
+
+#-------------------------------------------------------------------------------------------------
+# for goout:
+data %>% group_by(high_use) %>% summarise(count = n(), mean_going_out = mean(goout))
+# higher mean or going out more in the group with high use
+
+g1 <- ggplot(data, aes(x = high_use, y = goout)) + geom_boxplot() + ylab("going out")
+g1 # looks nice
+g2 <- ggplot(data = data, aes(x = high_use)) + geom_bar() + facet_wrap("goout")
+g2 # a plot for each going out level from 1 (the least) to 5 (the most)
+
+```
+
+It looks like a bigger part of the females are in the group with small consumption, as expected. In males the division is more even, more individuals with a bigger proportion in the high use group.
+
+When there are 0 failures, most are in the low consumption class, whereas in the other groups the division is more even, and in the class with the most failures, all have high consumption. This is in accordance with the hypothesis. 
+
+In the high consumption class the individuals are more outgoing, as hypothesized. 
+
+
+Logistic regression On the variables chosen:
+
+```{r}
+
+m <- glm(high_use ~ sex + failures + goout, data = data, family = "binomial")
+
+# print out a summary of the model
+summary(m)
+
+# print out the coefficients of the model
+coef(m)
+
+# ORs and their CIs
+
+OR <- coef(m) %>% exp
+CI <- confint(m) %>% exp
+cbind(OR, CI)
+
+
+```
+
+All p-values are < 0.05. 
+
+The model includes a categorical variable sex, for which the model p-value indicates that the level M differs from the level F in a statistically significant way. For categorical variables the OR indicated here is not the true OR. For sex-M it is OR(intercept) + OR(sexM) = 0.0224311 + 2.4243823 = 2.446813,indicating that it is a risk factor for high alcohol consumption.
+
+The other ORs are all above 1, so the variables are also risk factors. They increase the outcome by their OR amounts when other variables are kept constant. For example, having a one-unit increase in failures increases the risk of high alcohol consumption by a unit of 1.7 when other variables are kept constant, and likewise for the other variable goout. 
+
+To know wether the whole variable sex improves the model fit, we could fit a model without it and compare the models with an anova test. 
+
+Explore the predictive power of the model:
+
+```{r}
+
+# predict() the probability of high_use
+probabilities <- predict(m, type = "response")
+
+data <- mutate(data, probability = probabilities)
+data <- mutate(data, prediction = probability > 0.5) # probability > 0.5 means it is in the class high consumptio
+
+# tabulate the target variable versus the predictions
+table(high_use = data$high_use, prediction = data$prediction)
+# or like this
+table(high_use = data$high_use, prediction = data$prediction) %>% prop.table() %>% addmargins()
+
+# a plot of the results
+g <- ggplot(data, aes(x = probability, y = high_use, col = prediction)) + geom_point()
+g
+
+# training error
+loss_func <- function(class, prob) {
+  n_wrong <- abs(class - prob) > 0.5
+  mean(n_wrong)
+}
+
+loss_func(class = data$high_use, prob = data$probability)
+
+# Compare the performance of the model with performance achieved by some simple guessing strategy
+# a literal guesser, having 0.5 chance at choosing the correct value
+guesses <- sample(c(0,1), nrow(data), replace = T, )
+loss_func(class = data$high_use, prob = guesses)
+# as expected, the guesser is right about half of the time, not being very efficient at predicting
+
+```
+
+Tabulating the predictions, in total 252 + 33 have been predicted right, while 78 + 7 have been missclassified. This results to a training error of 23%, which is better than that of a random guesser (49%). Thus, our model outperforms just guessing the class  randomly by guite a bit. 
+
+10-fold cross-validation: 
+
+```{r}
+
+cv <- cv.glm(data = data, cost = loss_func, glmfit = m, K = nrow(data))
+cv$delta[1]
+
+
+```
+
+The test error is 26%, which is higher than the training error, as one might expect. It is also about the same compared to that of the model in the excercise set (26%). 
+
+Try finding a model with a smaller test error: 
+
+```{r}
+
+m <- glm(high_use ~ sex + failures + goout + age, data = data, family = "binomial")
+cv <- cv.glm(data = data, cost = loss_func, glmfit = m, K = nrow(data))
+cv$delta[1]
+
+```
+
+The test error is 21%, which is now smaller than in the excercise. 
