@@ -1,0 +1,350 @@
+# 4: Clustering and classification
+
+```{r}
+date()
+```
+
+Prep packages:
+
+```{r}
+library(dplyr)
+library(MASS)
+library(corrplot)
+library(plotly)
+library(GGally)
+```
+
+Load the Boston data from MASS the R package, explore the structure and the dimensions of the data:
+
+The dataset contains "Housing Values in Suburbs of Boston".
+
+More information on the data can be found here: 
+
+[https://stat.ethz.ch/R-manual/R-devel/library/MASS/html/Boston.html]
+
+```{r}
+
+data("Boston")
+
+```
+
+A graphical overview of the data and summaries of the variables in the data:
+
+```{r}
+
+str(Boston)
+summary(Boston)
+pairs(Boston)
+
+cor_matrix <- cor(Boston) %>% round(2)
+corrplot(cor_matrix, method="circle", type = "upper", cl.pos = "b", tl.pos = "d", tl.cex = 0.6)
+
+# ggpairs(Boston, mapping = aes(alpha = 0.3), lower = list(combo = wrap("facethist", bins = 20)))
+
+
+```
+
+The distribution of the variabes are different. Some, like zn and age, seem to be from zero to a hundred, some (like chas) from zero to one, and some have complitely different scales: tax from 187 to 711, black from 0.32 to 397.
+
+Many of the variables are heavily correlated. For example, lstat and medv have a negative correlation of almost 1, and rad and tax a positive correlation of almost one. 
+
+Standardizing the dataset:
+
+```{r}
+# scale the variables (all numeric)
+boston_scaled <- scale(Boston)
+summary(boston_scaled)
+
+```
+
+Standardizing helps to unify variables in very different scales. The variables have been scaled and centered. In the standardized data, the mean of each column is zero now. 
+
+Create a categorical variable of the crime rate in the Boston dataset:
+
+```{r}
+boston_scaled <- as.data.frame(boston_scaled) # we need this too
+boston_scaled$crim <- as.numeric(boston_scaled$crim) # we need this too
+
+crime <- cut(boston_scaled$crim, breaks = quantile(boston_scaled$crim), include.lowest = TRUE, label = c("low", "med_low", "med_high", "high"))
+
+```
+
+Drop the old crime rate variable from the dataset:
+
+```{r}
+
+# remove original crim from the dataset
+boston_scaled <- dplyr::select(boston_scaled, -crim)
+
+# add the new categorical value to scaled data
+boston_scaled <- data.frame(boston_scaled, crime)
+
+```
+
+Divide the dataset to train and test sets:
+
+```{r}
+# number of rows in the Boston dataset 
+n <- nrow(boston_scaled)
+
+# choose randomly 80% of the rows
+ind <- sample(n,  size = n * 0.8)
+
+# create train set
+train <- boston_scaled[ind,]
+
+# create test set 
+test <- boston_scaled[-ind,]
+
+```
+
+Fitting the linear discriminant analysis on the train set & drawing the LDA (bi)plot:
+
+```{r}
+
+# linear discriminant analysis
+lda.fit <- lda(crime ~ ., data = train)
+
+# print the lda.fit object
+lda.fit
+
+# the function for lda biplot arrows
+lda.arrows <- function(x, myscale = 1, arrow_heads = 0.1, color = "red", tex = 0.75, choices = c(1,2)){
+  heads <- coef(x)
+  graphics::arrows(x0 = 0, y0 = 0, 
+         x1 = myscale * heads[,choices[1]], 
+         y1 = myscale * heads[,choices[2]], col=color, length = arrow_heads)
+  text(myscale * heads[,choices], labels = row.names(heads), 
+       cex = tex, col=color, pos=3)
+}
+
+# target classes as numeric
+classes <- as.numeric(train$crime)
+
+# plot the lda results (select both lines and execute them at the same time!)
+plot(lda.fit, dimen = 2)
+lda.arrows(lda.fit, myscale = 1)
+
+
+```
+
+Saving the crime categories from the test set and then removing the categorical crime variable from the test dataset:
+
+```{r}
+
+# save the correct classes from test data
+correct_classes <- test$crime
+
+# remove the crime variable from test data
+test <- dplyr::select(test, -crime)
+
+```
+
+Predicting the classes with the LDA model on the test data:
+
+```{r}
+
+# predict classes with test data
+lda.pred <- predict(lda.fit, newdata = test)
+
+# cross tabulate the results
+table(correct = correct_classes, predicted = lda.pred$class)
+
+```
+
+Many have been predicted correct (13+16+15+26) / (13+11+1+4+16+3+2+11+15+26) = 0.6862745, in total 68.6% are correct. Although may are still predicted wrong, especially in the low and med_high categories. The model works the best for the high category, where all are correct. 
+
+Reloading the Boston dataset and standardizing the dataset:
+
+```{r}
+# from above
+data("Boston")
+boston_scaled <- scale(Boston)
+boston_scaled <- as.data.frame(boston_scaled) # we need this too
+
+```
+
+Calculating the distances between the observations:
+
+```{r}
+# with euclidean distance
+
+# euclidean distance matrix
+dist_eu <- dist(boston_scaled)
+
+# look at the summary of the distances
+summary(dist_eu)
+
+```
+
+Running k-means algorithm:
+
+```{r}
+
+# k-means clustering
+km <- kmeans(boston_scaled, centers = 3) # trying with 3 clusters to begin with
+
+# plot the Boston dataset with clusters
+pairs(boston_scaled, col = km$cluster)
+
+```
+
+Investigating the optimal number of clusters and running the algorithm again:
+
+```{r}
+set.seed(123)
+
+# determine the number of clusters
+k_max <- 10
+
+# calculate the total within sum of squares
+twcss <- sapply(1:k_max, function(k){kmeans(boston_scaled, k)$tot.withinss})
+
+# visualize the results
+qplot(x = 1:k_max, y = twcss, geom = 'line')
+
+# k-means clustering
+km <- kmeans(boston_scaled, centers = 2)
+
+# plot the Boston dataset with clusters
+pairs(boston_scaled, col = km$cluster)
+
+
+pairs(boston_scaled[1:5], col = km$cluster)
+pairs(boston_scaled[6:10], col = km$cluster)
+pairs(boston_scaled[11:13], col = km$cluster)
+
+```
+
+The optimal number of clusters is when the line drops a lot. Deciding on this is very subjective. One can choose two clusters for the slope being the biggest till that, or maybe 6 for there the descent evens out. We are going with 2 clusters now. 
+
+The variables separating the two groups in the pairs plots are, for instance, crim&zn and crim&nox. 
+
+
+
+Bonus section
+
+Performing k-means on the original (standardized) Boston data:
+
+```{r}
+# like above:
+data("Boston")
+boston_scaled <- scale(Boston)
+boston_scaled <- as.data.frame(boston_scaled) # we need this too
+
+# k-means clustering
+km <- kmeans(boston_scaled, centers = 3) # trying with 3 clusters 
+
+# plot the Boston dataset with clusters
+pairs(boston_scaled, col = km$cluster)
+
+```
+
+Performing LDA using the clusters as target classes:
+
+```{r}
+
+# not doing a train and test split here for it was not asked for
+boston_scaled$cluster <- km$cluster
+
+# linear discriminant analysis
+# lda.fit <- lda(cluster ~ ., data = boston_scaled)
+# Error in lda.default(x, grouping, ...) :
+# variable 4 appears to be constant within groups
+# -> run the model with all variables except for the fourth one
+lda.fit <- lda(cluster ~ ., data = boston_scaled[,-4])
+
+# print the lda.fit object
+lda.fit
+
+
+```
+
+Visualizing the results with a biplot:
+
+```{r}
+
+# the function for lda biplot arrows
+lda.arrows <- function(x, myscale = 1, arrow_heads = 0.1, color = "red", tex = 0.75, choices = c(1,2)){
+  heads <- coef(x)
+  graphics::arrows(x0 = 0, y0 = 0, 
+         x1 = myscale * heads[,choices[1]], 
+         y1 = myscale * heads[,choices[2]], col=color, length = arrow_heads)
+  text(myscale * heads[,choices], labels = row.names(heads), 
+       cex = tex, col=color, pos=3)
+}
+
+# target classes as numeric
+classes <- as.numeric(boston_scaled$cluster)
+
+# plot the lda results (select both lines and execute them at the same time!)
+plot(lda.fit, dimen = 2)
+lda.arrows(lda.fit, myscale = 1)
+
+```
+
+The variables affecting the LDs are (for example, only the top 2 listed here): indus and rad for LD1, and tax and medv for LD2. The division is not as good or clear as in some other examples encountered in the excercises. Classes 1 and 2 seem to go together, and 3 be separate, but there is overlap fbetween them all. 
+
+
+Super bonus section:
+
+```{r}
+# scaled train data from above
+data("Boston")
+boston_scaled <- scale(Boston)
+boston_scaled <- as.data.frame(boston_scaled) # we need this too
+boston_scaled$crim <- as.numeric(boston_scaled$crim) # we need this too
+crime <- cut(boston_scaled$crim, breaks = quantile(boston_scaled$crim), include.lowest = TRUE, label = c("low", "med_low", "med_high", "high"))
+# remove original crim from the dataset
+boston_scaled <- dplyr::select(boston_scaled, -crim)
+# add the new categorical value to scaled data
+boston_scaled <- data.frame(boston_scaled, crime)
+# number of rows in the Boston dataset 
+n <- nrow(boston_scaled)
+# choose randomly 80% of the rows
+ind <- sample(n,  size = n * 0.8)
+# create train set
+train <- boston_scaled[ind,]
+# create test set 
+test <- boston_scaled[-ind,]
+
+# linear discriminant analysis
+lda.fit <- lda(crime ~ ., data = train)
+# print the lda.fit object
+# lda.fit
+# has teh LD1-3 in it
+
+# k-means clustering also needed
+# km <- kmeans(train, centers = 2) # 2 clusters here to match the excercise above where we chose 2 to be the optimal number
+# Warning: NAs introduced by coercionError in do_one(nmeth) : NA/NaN/Inf in foreign function call (arg 1)
+# we need to make crime a numeric column (now factor)
+train$crime <- as.numeric(train$crime)
+km <- kmeans(train, centers = 2) # ok
+
+```
+
+```{r}
+
+# the example script copied here
+model_predictors <- dplyr::select(train, -crime)
+# check the dimensions
+dim(model_predictors)
+dim(lda.fit$scaling)
+# matrix multiplication
+matrix_product <- as.matrix(model_predictors) %*% lda.fit$scaling
+matrix_product <- as.data.frame(matrix_product)
+# Next, install and access the plotly package. Create a 3D plot (cool!) of the columns of the matrix product using the code below.
+
+# the original plot
+plot_ly(x = matrix_product$LD1, y = matrix_product$LD2, z = matrix_product$LD3, type= 'scatter3d', mode='markers')
+
+# modifying the plot: Set the color to be the crime classes of the train set
+plot_ly(x = matrix_product$LD1, y = matrix_product$LD2, z = matrix_product$LD3, type= 'scatter3d', mode='markers', color = train$crime)
+
+# modifying the plot: color is defined by the clusters of the k-means
+plot_ly(x = matrix_product$LD1, y = matrix_product$LD2, z = matrix_product$LD3, type= 'scatter3d', mode='markers', color = km$cluster)
+
+```
+
+The plots have some differences and similarities. In all of them, there is some overlap in the grops, and having only 2 classes in k-means still doesnt differenciate the grups that well even though in the 3D plot there are two clear groups it could pick up on. In both plots the tighter cluster has mainly one colour/group/class label, whereas the sparcer cluster has more. 
+
