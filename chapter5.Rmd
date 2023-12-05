@@ -1,0 +1,183 @@
+# 5: Dimensionality reduction techniques
+
+```{r}
+date()
+```
+
+Prep packages:
+
+```{r}
+library(dplyr)
+library(readr)
+library(corrplot)
+library(GGally)
+library(tibble)
+library(FactoMineR)
+```
+
+Read in data:
+
+```{r}
+human <- read_csv("https://raw.githubusercontent.com/KimmoVehkalahti/Helsinki-Open-Data-Science/master/datasets/human2.csv")
+```
+
+Move the country names to rownames:
+
+```{r}
+human_ <- column_to_rownames(human, "Country")
+```
+
+A graphical overview of the data and summaries of the variables:
+
+```{r}
+# visualize the 'human_' variables
+ggpairs(human_, progress = FALSE)
+
+# compute the correlation matrix and visualize it with corrplot
+cor(human_)
+# this is copied straight from the exercises, i guess the visualization with corrplot is missing from there??
+# try this here, i think we did something similar a week or two ago
+corrplot(cor(human_))
+```
+
+Ggpairs gives the summaries of the variables: how they are distributed and correlated with one another. We can see that many variables are highly correlated, having high correlation values, either positive or negative, and that is well visualized in all the options above, the ggpaors, correlation matrix, and the corrplot. For example, life.exp and edu2.fm are highly correlated positively, and mat.mor and life.exp negatively. 
+
+The variables have different distributions, some heavily focussing on one edge, such as GNI and mat.mor, and some have more of a bell shape, like edu.exp. 
+
+PCA on non-standardized data:
+
+```{r}
+pca_human <- prcomp(human_) # using the data where countries are rownames
+
+# variability captured by the PCs
+# create and print out a summary of pca_human
+s <- summary(pca_human)
+# rounded percentanges of variance captured by each PC
+pca_pr <- round(1*s$importance[2, ], digits = 5)
+# print out the percentages of variance
+pca_pr
+
+
+# biplot
+biplot(pca_human, choices = 1:2, cex = c(0.8, 1), col = c("grey40", "deeppink2"))
+# another kind of a biplot made in the exercises
+# create object pc_lab to be used as axis labels
+paste0(names(pca_pr), " (", pca_pr, "%)")
+# copied straight from the exercises, not saved into a variable to actually be used as axis labels??
+# draw a biplot
+biplot(pca_human, cex = c(0.8, 1), col = c("grey40", "deeppink2"), xlab = NA, ylab = NA)
+
+
+```
+We can see that PC1 captures 99% of the variability/variance, and the rest what is left. In the biplot we see that the highly skewed (from the correlation plots a bit earlier) variable GNI has a large influence on PC1. Since the data is not scaled, we can assume that GNI has the highest numerical scale of the variables in the data, thus affecting the outcome of PCA heavily. 
+
+PCA on scaled data:
+
+```{r}
+human_std <- scale(human_) # using the data where countries are rownames
+
+pca_human_std <- prcomp(human_std)
+
+# variability captured by the PCs
+s_std <- summary(pca_human_std)
+pca_pr <- round(1*s_std$importance[2, ], digits = 5)
+pca_pr
+
+# biplot
+biplot(pca_human_std, choices = 1:2, cex = c(0.8, 1), col = c("grey40", "deeppink2"))
+
+
+
+```
+
+Now that the variables are scaled, the first PC captures 54% of the variance, and the numbers for the rest are much bigger than before. This is also evident from the biplot where the weights for the other variables are comparable to each other. 
+
+The results are different when the data is not scaled and when it is. This is because PCA is kind of a clustering method, and for clustering, scaling the data beforehand is crucial. If not scaled, then variables may be on totally different units/scales/numerical values, and the variables with the largest numerical values will dominate the analysis. This is what we saw happening with unscaled data. 
+
+Include captions in the biplots:
+
+The biplot function used is from stats base R package now, it does not include caption variable when examined from its help page. Other packages with biplot function do include that, for example PCAtools package has it. If we add caption to the plot, we only get warnings: 
+
+
+```{r}
+
+# non-scaled data:
+biplot(pca_human, choices = 1:2, cex = c(0.8, 1), col = c("grey40", "deeppink2"), caption = "hei")
+# scaled data: 
+biplot(pca_human_std, choices = 1:2, cex = c(0.8, 1), col = c("grey40", "deeppink2"), caption = "hei")
+
+```
+We also did not add captions to the biplots in the exercises, so i am including the information here as plain text instead. I am also not entirely sure to what extent we are meant to describe the results here, because captions are usually very, very brief, and upon interpreting the results I have already touched on the scaled/not issue, and the question after this want me to take a closer look at the PC axis. So i am combining the two topics in a somewhat brief "caption" next.
+
+Describing the results using the actual phenomena the variables relate to: 
+
+  * unscaled data: 
+    
+      * the variable with the largest numerical values dominates PCA
+      
+      * here that variable is GNI, Gross National Income per capita, which defines PC1 which accounts for essentially all the variance in the unscaled data
+        
+      * in the biplots the countries Qatar and Sierra Leone are on the opposite sides for PC1, which makes sense for their GNIs are likely very different / the complite opposite
+        
+  * scaled data:
+    
+      * all variables have an equal effect on PCA
+        
+      * for PC1, the variables (mat.mor and ado.birth) and (GNI, edu.exp, life.exp) are on the opposite sides (the variable names are kinda hard to see, no matter what sizes you plot them with)
+        
+      * therefore countries with low maternal mortality, low birth rates, high GNI, high expected years of schooling, and high life expectancy at birth are grouped on one side, and countries with the opposite values on the other
+
+
+Personal interpretations of the first two principal component dimensions based on the biplot drawn after PCA on the standardized data:
+
+As just stated, the PC1 is defined by maternal mortality and birth rates to one direction, and GNI, expected years of schooling, and life expectancy at birth to the other. These seem like general good life indicators, or developing-country-or-not kind of variables by the looks of them. 
+
+PC2 is defined by parli.F and labo.fm which stand for Percetange of female representatives in parliament and the Proportion of females in the labour force compared to that of men. PC1 covers the basics for how good the quality of life may be, and PC2 seems to be a higher order measure for how developed a country is or how good the life there may be, because usually the number of female representatives is high in far-developed coutries, and the same goes for the proportion of females in the workforce. 
+
+Moving on to the Tea data.
+
+Loading the tea dataset and converting its character variables to factors:
+
+```{r}
+
+tea <- read.csv("https://raw.githubusercontent.com/KimmoVehkalahti/Helsinki-Open-Data-Science/master/datasets/tea.csv", stringsAsFactors = TRUE)
+
+```
+
+Exploring the data:
+
+```{r}
+
+dim(tea)
+str(tea)
+summary(tea)
+View(tea)
+
+```
+
+Multiple Correspondence Analysis (MCA):
+
+```{r}
+# leaving in only some of the variables
+# column names to keep in the dataset
+keep_columns <- c("Tea", "How", "how", "sugar", "where", "lunch")
+# select the 'keep_columns' to create a new dataset
+tea_time <- select(tea, one_of(keep_columns))
+
+mca <- MCA(tea_time, graph = FALSE)
+
+# summary of the model
+summary(mca)
+
+# visualize MCA
+
+# plot the individuals
+plot(mca, invisible=c("ind"), graph.type = "classic", habillage = "quali") 
+
+# plot the variables
+plot(mca, invisible=c("var"), graph.type = "classic")
+
+```
+
+There seem to be some variable levels which go together more often than others. For example, unpackaged tea is often bought from tea shops, whereas tea bags from chain stores. There is not as big a distance between how the tea is drank (alone/milk/lemon) or if sugar is added, or if it is drank at lunch or not. The tea quality for green tea is a hint towards unpackaged tea shop tea, but earl grey and black tea are closer to chain stores, tea bags, and a combination of the shop combinations and teabag/unpackaged combinations. 
+
